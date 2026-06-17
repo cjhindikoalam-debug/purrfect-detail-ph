@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Purrfect Detail PH 🐱</title>
+    <link rel="manifest" href="./manifest.json" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PurrfectPH" />
+  <meta name="theme-color" content="#FFC864" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0e0e0e; overflow-x: hidden; }
+    input:focus, select:focus { outline: none; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    ::-webkit-scrollbar { width: 3px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,200,100,0.3); border-radius: 999px; }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(14px); } to { opacity:1; transform:translateY(0); } }
+    .fade-up { animation: fadeUp 0.35s ease forwards; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+// ── Constants ──────────────────────────────────────────────────────
+const TAIWAN_GOAL = 60000;
+const TAIWAN_WEEKS = 35;
+const TAIWAN_WEEKLY_TARGET = 1750;
+const TRIP_DATES = "Feb 3 – Feb 12, 2027 · 10 days · 🧧 CNY";
+const BIZ_GOAL = 25000;
+const BIZ_MONTHS = 3;
+
+const SERVICES = [
+  { label:"Motorcycle Basic Wash",  price:400  },
+  { label:"Motorcycle Full Detail", price:600  },
+  { label:"Car Basic Wash",         price:650  },
+  { label:"Car Standard Detail",    price:1500 },
+  { label:"Car Full Detail",        price:2500 },
+  { label:"Interior Only",          price:700  },
+  { label:"Custom",                 price:0    },
+];
+
+const TRIP_BREAKDOWN = [
+  { icon:"✈️", label:"Round-trip Flight",   low:9000,  high:16000 },
+  { icon:"🏨", label:"Hotel (your half)",   low:12500, high:20000 },
+  { icon:"🥢", label:"Food (10 days)",      low:12000, high:18000 },
+  { icon:"🚇", label:"Transport",           low:3000,  high:5000  },
+  { icon:"🗺️", label:"Activities & Dates", low:4000,  high:8000  },
+  { icon:"📱", label:"eSIM + Insurance",    low:2300,  high:3700  },
+  { icon:"🛍️", label:"Shopping Buffer",    low:3000,  high:6000  },
+];
+
+const HOLIDAYS = [
+  { date:"Feb 5", name:"CNY Eve 🧧",               note:"Your GF's holiday starts — fly in Feb 3 to beat the crowds!" },
+  { date:"Feb 6", name:"Chinese New Year 🎆",       note:"Year of the Fire Goat! Lion dances, fireworks, red envelopes." },
+  { date:"Feb 7–9", name:"CNY Holidays 🏮",        note:"5-day public holiday in Taiwan — she's fully free!" },
+];
+
+const CAT_QUIPS = [
+  "A cat watched you save today 🐱","Purrfect progress!","The cats approve 😸",
+  "Kibble fund growing 🐟","One step closer to Taiwan!","Shiny cars, happy cats 🚗🐱",
+  "You're on a roll!","Looking good, detail boss!","Double Ten is waiting! 🎆","Keep going, the cats believe in you!",
+];
+
+const EMPTY_FORM = { date:"", vehicle:"Car", service:"Car Basic Wash", price:650, note:"", cat:"" };
+
+// ── Storage ────────────────────────────────────────────────────────
+const load = (key, fb) => { try { const v=localStorage.getItem(key); return v?JSON.parse(v):fb; } catch { return fb; } };
+const persist = (key, val) => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} };
+
+const initTw  = () => { const o={}; for(let w=1;w<=TAIWAN_WEEKS;w++) o[w]={saved:"",misc:"",note:"",expenses:[]}; return o; };
+const initBiz = () => { const o={}; for(let m=1;m<=BIZ_MONTHS;m++) o[m]={saved:"",note:""}; return o; };
+
+// ── Shared UI (defined OUTSIDE App so they never remount) ──────────
+const ProgressBar = ({ value, max, color="#FFC864", height=8, glow=true }) => {
+  const pct = Math.min((value/max)*100, 100);
+  return (
+    <div style={{ background:"rgba(255,255,255,0.07)", borderRadius:999, height, overflow:"hidden" }}>
+      <div style={{ height:"100%", width:`${pct}%`, borderRadius:999, background:color,
+        boxShadow:glow?`0 0 10px ${color}88`:"none",
+        transition:"width 0.7s cubic-bezier(0.34,1.56,0.64,1)" }} />
+    </div>
+  );
+};
+
+const Card = ({ children, style={}, accent }) => (
+  <div style={{ background:"rgba(255,255,255,0.03)", borderRadius:20,
+    border:`1px solid ${accent||"rgba(255,255,255,0.08)"}`, padding:"18px 16px", ...style }}>
+    {children}
+  </div>
+);
+
+const Lbl = ({ children }) => (
+  <div style={{ fontSize:10, letterSpacing:"2.5px", textTransform:"uppercase",
+    color:"rgba(255,255,255,0.35)", marginBottom:8, fontFamily:"'Syne',sans-serif", fontWeight:600 }}>
+    {children}
+  </div>
+);
+
+// ── HomeTab ────────────────────────────────────────────────────────
+const HomeTab = ({ twTotal, bizTotal, jobTotal, jobCount, twRemaining, resetAll }) => {
+  const quip = CAT_QUIPS[Math.floor((twTotal+bizTotal)/1500) % CAT_QUIPS.length];
+  return (
+    <div className="fade-up" style={{ padding:"20px 16px", display:"flex", flexDirection:"column", gap:14 }}>
+      <div style={{ textAlign:"center", fontSize:12, color:"rgba(255,200,100,0.6)", fontStyle:"italic", marginBottom:4 }}>{quip}</div>
+
+      <Card accent="rgba(125,211,200,0.2)">
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+          <div>
+            <Lbl>✈️ Taiwan Fund</Lbl>
+            <div style={{ fontFamily:"'Instrument Serif',serif", fontSize:28, color:"#7DD3C8" }}>₱{twTotal.toLocaleString()}</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:2 }}>of ₱{TAIWAN_GOAL.toLocaleString()} goal</div>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <div style={{ fontSize:28, fontWeight:800, color:"#7DD3C8" }}>{Math.round((twTotal/TAIWAN_GOAL)*100)}%</div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>complete</div>
+          </div>
+        </div>
+        <ProgressBar value={twTotal} max={TAIWAN_GOAL} color="#7DD3C8" />
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:8, display:"flex", justifyContent:"space-between" }}>
+          <span>{TRIP_DATES}</span><span>₱{twRemaining.toLocaleString()} to go</span>
+        </div>
+      </Card>
+
+      <Card accent="rgba(255,200,100,0.2)">
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+          <div>
+            <Lbl>🚗 Business Fund</Lbl>
+            <div style={{ fontFamily:"'Instrument Serif',serif", fontSize:28, color:"#FFC864" }}>₱{bizTotal.toLocaleString()}</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:2 }}>of ₱{BIZ_GOAL.toLocaleString()} goal</div>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <div style={{ fontSize:28, fontWeight:800, color:"#FFC864" }}>{Math.round((bizTotal/BIZ_GOAL)*100)}%</div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>complete</div>
+          </div>
+        </div>
+        <ProgressBar value={bizTotal} max={BIZ_GOAL} color="#FFC864" />
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:8, textAlign:"right" }}>₱{Math.max(BIZ_GOAL-bizTotal,0).toLocaleString()} remaining</div>
+      </Card>
+
+      <Card accent="rgba(168,217,139,0.2)">
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:jobCount>0?10:0 }}>
+          <div>
+            <Lbl>🧽 Detailing Income</Lbl>
+            <div style={{ fontFamily:"'Instrument Serif',serif", fontSize:28, color:"#A8D98B" }}>₱{jobTotal.toLocaleString()}</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:2 }}>{jobCount} job{jobCount!==1?"s":""} completed</div>
+          </div>
+          <div style={{ textAlign:"right" }}>
+            <div style={{ fontSize:22, fontWeight:800, color:"#A8D98B" }}>₱{jobCount>0?Math.round(jobTotal/jobCount).toLocaleString():"—"}</div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)" }}>avg/job</div>
+          </div>
+        </div>
+        {jobCount>0 && <ProgressBar value={jobCount} max={Math.max(jobCount,20)} color="#A8D98B" />}
+      </Card>
+
+      <div style={{ background:"linear-gradient(135deg,rgba(255,200,100,0.08),rgba(125,211,200,0.08))",
+        borderRadius:20, border:"1px solid rgba(255,200,100,0.15)", padding:16, textAlign:"center" }}>
+        <Lbl>Total Money Tracked</Lbl>
+        <div style={{ fontFamily:"'Instrument Serif',serif", fontSize:36, color:"#f0ede6" }}>₱{(twTotal+bizTotal+jobTotal).toLocaleString()}</div>
+        <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:4 }}>Taiwan + Business + Jobs</div>
+      </div>
+
+      <Card accent="rgba(125,211,200,0.15)">
+        <Lbl>🇹🇼 Holidays During Your Trip</Lbl>
+        {HOLIDAYS.map((h,i) => (
+          <div key={i} style={{ paddingBottom:i<2?12:0, marginBottom:i<2?12:0, borderBottom:i<2?"1px solid rgba(255,255,255,0.05)":"none" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:3 }}>
+              <span style={{ fontSize:13, fontWeight:700, color:"#f0ede6" }}>{h.name}</span>
+              <span style={{ fontSize:12, color:"#7DD3C8", fontWeight:600 }}>{h.date}</span>
+            </div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)" }}>{h.note}</div>
+          </div>
+        ))}
+      </Card>
+
+      <button onClick={resetAll} style={{ background:"transparent", border:"1px solid rgba(255,255,255,0.08)",
+        borderRadius:12, padding:8, color:"rgba(255,255,255,0.2)", fontSize:11, cursor:"pointer",
+        fontFamily:"'Syne',sans-serif", width:"100%" }}>reset all data</button>
+    </div>
+  );
+};
+
+// ── WeeklyExpenses (sub-component, outside TaiwanTab) ─────────────
+const EXPENSE_CATS = ["🍔 Food","🚗 Transport","🛍️ Shopping","💊 Health","📱 Load/Bills","🎮 Leisure","🐱 Cat stuff","📦 Other"];
+
+const WeeklyExpenses = ({ week, expenses, addExpense, deleteExpense }) => {
+  const [label, setLabel] = useState("");
+  const [amount, setAmount] = useState("");
+  const [cat, setCat] = useState(EXPENSE_CATS[7]);
+  const [showAdd, setShowAdd] = useState(false);
+
+  const total = (expenses||[]).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+
+  const handleAdd = () => {
+    if (!label || !amount) return;
+    addExpense(week, { id:Date.now(), label, amount, cat });
+    setLabel(""); setAmount(""); setCat(EXPENSE_CATS[7]); setShowAdd(false);
+  };
+
+  return (
+    <Card accent="rgba(244,162,107,0.2)">
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+        <div style={{ fontFamily:"'Instrument Serif',serif", fontSize:16, color:"#fff" }}>
+          Week {week} <span style={{ color:"#F4A26B", fontStyle:"italic" }}>Expenses</span>
+        </div>
+        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+          {total>0 && <span style={{ fontSize:13, fontWeight:700, color:"#F4A26B" }}>₱{total.toLocaleString()}</span>}
+          <button onClick={()=>setShowAdd(!showAdd)} style={{ background:showAdd?"rgba(255,255,255,0.05)":"rgba(244,162,107,0.15)",
+            border:`1px solid ${showAdd?"rgba(255,255,255,0.1)":"rgba(244,162,107,0.3)"}`,
+            borderRadius:10, padding:"6px 12px", color:showAdd?"rgba(255,255,255,0.4)":"#F4A26B",
+            fontSize:12, fontWeight:700, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>
+            {showAdd?"Cancel":"+ Add"}
+          </button>
+        </div>
+      </div>
+
+      {showAdd && (
+        <div style={{ background:"rgba(244,162,107,0.05)", borderRadius:14, padding:12, marginBottom:12, border:"1px solid rgba(244,162,107,0.15)" }}>
+          <div style={{ marginBottom:8 }}>
+            <Lbl>Category</Lbl>
+            <select value={cat} onChange={e=>setCat(e.target.value)}
+              style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(244,162,107,0.2)",
+                borderRadius:10, padding:"10px 12px", color:"#f0ede6", fontSize:13, fontFamily:"'Syne',sans-serif" }}>
+              {EXPENSE_CATS.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div style={{ marginBottom:8 }}>
+            <Lbl>Description</Lbl>
+            <input type="text" placeholder="e.g. Jollibee, Shopee haul..." value={label}
+              onChange={e=>setLabel(e.target.value)}
+              style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)",
+                borderRadius:10, padding:"10px 12px", color:"#f0ede6", fontSize:13, fontFamily:"'Syne',sans-serif" }} />
+          </div>
+          <div style={{ marginBottom:10 }}>
+            <Lbl>Amount (₱)</Lbl>
+            <input type="number" placeholder="e.g. 250" value={amount}
+              onChange={e=>setAmount(e.target.value)}
+              style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(244,162,107,0.25)",
+                borderRadius:10, padding:"10px 12px", color:"#f0ede6", fontSize:16, fontWeight:700, fontFamily:"'Syne',sans-serif" }} />
+          </div>
+          <button onClick={handleAdd} style={{ width:"100%", background:"rgba(244,162,107,0.15)",
+            border:"1px solid rgba(244,162,107,0.3)", borderRadius:10, padding:10,
+            color:"#F4A26B", fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>
+            Save Expense ✓
+          </button>
+        </div>
+      )}
+
+      {(expenses||[]).length===0 && !showAdd && (
+        <div style={{ textAlign:"center", padding:"10px 0", color:"rgba(255,255,255,0.2)", fontSize:12 }}>No expenses logged yet</div>
+      )}
+
+      {(expenses||[]).map((exp,i,arr) => (
+        <div key={exp.id} style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+          padding:"9px 0", borderBottom:i<arr.length-1?"1px solid rgba(255,255,255,0.05)":"none" }}>
+          <div>
+            <div style={{ fontSize:12, color:"#f0ede6" }}>{exp.cat} <span style={{ color:"rgba(255,255,255,0.5)" }}>· {exp.label}</span></div>
+          </div>
+          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+            <span style={{ fontSize:13, fontWeight:700, color:"#F4A26B" }}>₱{parseFloat(exp.amount).toLocaleString()}</span>
+            <button onClick={()=>deleteExpense(week, exp.id)} style={{ background:"transparent", border:"none",
+              color:"rgba(255,255,255,0.15)", fontSize:11, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>✕</button>
+          </div>
+        </div>
+      ))}
+
+      {total>0 && (
+        <div style={{ display:"flex", justifyContent:"space-between", marginTop:10, paddingTop:10,
+          borderTop:"1px solid rgba(244,162,107,0.15)" }}>
+          <span style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>Total spent this week</span>
+          <span style={{ fontSize:14, fontWeight:800, color:"#F4A26B" }}>₱{total.toLocaleString()}</span>
+        </div>
+      )}
+    </Card>
+  );
+};
+
+// ── TaiwanTab ──────────────────────────────────────────────────────
+const TaiwanTab = ({ twLogs, twWeek, setTwWeek, updateTw, addExpense, deleteExpense, twTotal, twWeeksLogged, twRemaining, weeksLeft }) => (
+  <div className="fade-up" style={{ padding:"20px 16px", display:"flex", flexDirection:"column", gap:14 }}>
+    <div style={{ fontFamily:"'Instrument Serif',serif", fontSize:22, color:"#7DD3C8", fontStyle:"italic" }}>Taiwan Trip Fund ✈️</div>
+    <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)" }}>{TRIP_DATES} · Goal ₱{TAIWAN_GOAL.toLocaleString()}</div>
+
+    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+      {[
+        { label:"Saved",        value:`₱${twTotal.toLocaleString()}`,                           color:"#7DD3C8" },
+        { label:"Weeks logged", value:twWeeksLogged,                                            color:"#f0ede6" },
+        { label:"Need/week",    value:`₱${Math.round(twRemaining/weeksLeft).toLocaleString()}`, color:"#FFC864" },
+      ].map((s,i) => (
+        <Card key={i} style={{ padding:"12px 10px", textAlign:"center" }}>
+          <div style={{ fontSize:"clamp(13px,3.8vw,18px)", fontWeight:800, color:s.color }}>{s.value}</div>
+          <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginTop:2 }}>{s.label}</div>
+        </Card>
+      ))}
+    </div>
+
+    <ProgressBar value={twTotal} max={TAIWAN_GOAL} color="#7DD3C8" height={10} />
+
+    <div style={{ overflowX:"auto", paddingBottom:4 }}>
+      <div style={{ display:"flex", gap:6, width:"max-content" }}>
+        {Array.from({length:TAIWAN_WEEKS},(_,i)=>i+1).map(w => {
+          const done = parseFloat(twLogs[w]?.saved)>0;
+          const hasExp = (twLogs[w]?.expenses||[]).length>0;
+          return (
+            <button key={w} onClick={()=>setTwWeek(w)} style={{ minWidth:48, padding:"9px 6px", borderRadius:12, flexShrink:0,
+              border:twWeek===w?"1px solid #7DD3C8":"1px solid rgba(255,255,255,0.08)",
+              background:twWeek===w?"rgba(125,211,200,0.15)":done?"rgba(125,211,200,0.06)":"rgba(255,255,255,0.03)",
+              color:twWeek===w?"#7DD3C8":done?"rgba(125,211,200,0.7)":"rgba(255,255,255,0.3)",
+              fontSize:12, fontWeight:twWeek===w?700:400, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>
+              <div>W{w}</div>
+              {(done||hasExp)&&<div style={{fontSize:9,marginTop:1}}>{done?"✓":"·"}</div>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+
+    <Card accent="rgba(125,211,200,0.15)">
+      <div style={{ fontFamily:"'Instrument Serif',serif", fontSize:18, color:"#fff", marginBottom:14 }}>
+        Week {twWeek} <span style={{ color:"#7DD3C8", fontStyle:"italic" }}>Entry</span>
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <Lbl>Amount Saved (₱)</Lbl>
+        <input type="number" placeholder="e.g. 3,750" value={twLogs[twWeek]?.saved||""}
+          onChange={e=>updateTw(twWeek,"saved",e.target.value)}
+          style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(125,211,200,0.25)",
+            borderRadius:12, padding:"12px 14px", color:"#f0ede6", fontSize:18, fontWeight:700, fontFamily:"'Syne',sans-serif" }} />
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <Lbl>Note</Lbl>
+        <input type="text" placeholder="Skipped Shopee this week 🎉" value={twLogs[twWeek]?.note||""}
+          onChange={e=>updateTw(twWeek,"note",e.target.value)}
+          style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)",
+            borderRadius:12, padding:"12px 14px", color:"#f0ede6", fontSize:14, fontFamily:"'Syne',sans-serif" }} />
+      </div>
+      {parseFloat(twLogs[twWeek]?.saved)>0 && (
+        <div style={{ background:"rgba(125,211,200,0.07)", borderRadius:12, padding:12, border:"1px solid rgba(125,211,200,0.15)" }}>
+          <div style={{ fontSize:13, color:"#A8D98B" }}>Saved ₱{parseFloat(twLogs[twWeek].saved).toLocaleString()}</div>
+          {twLogs[twWeek]?.note&&<div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:4,fontStyle:"italic"}}>"{twLogs[twWeek].note}"</div>}
+        </div>
+      )}
+    </Card>
+
+    <WeeklyExpenses
+      week={twWeek}
+      expenses={twLogs[twWeek]?.expenses||[]}
+      addExpense={addExpense}
+      deleteExpense={deleteExpense}
+    />
+
+    <Card>
+      <Lbl>💰 Trip Cost Breakdown (10 days · CNY)</Lbl>
+      {TRIP_BREAKDOWN.map((item,i) => (
+        <div key={i} style={{ display:"flex", alignItems:"center", gap:10, paddingBottom:10,
+          marginBottom:i<TRIP_BREAKDOWN.length-1?10:0, borderBottom:i<TRIP_BREAKDOWN.length-1?"1px solid rgba(255,255,255,0.05)":"none" }}>
+          <span style={{ fontSize:18, width:28, textAlign:"center" }}>{item.icon}</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:13, color:"#f0ede6" }}>{item.label}</div>
+            <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)" }}>₱{item.low.toLocaleString()} – ₱{item.high.toLocaleString()}</div>
+          </div>
+          <div style={{ fontSize:13, fontWeight:700, color:"#7DD3C8" }}>₱{Math.round((item.low+item.high)/2).toLocaleString()}</div>
+        </div>
+      ))}
+      <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, paddingTop:12, borderTop:"1px solid rgba(125,211,200,0.2)" }}>
+        <span style={{ fontSize:14, fontWeight:700, color:"#f0ede6" }}>Recommended Goal</span>
+        <span style={{ fontSize:16, fontWeight:800, color:"#7DD3C8" }}>₱{TAIWAN_GOAL.toLocaleString()}</span>
+      </div>
+    </Card>
+
+    <Lbl>All 35 Weeks</Lbl>
+    {Array.from({length:TAIWAN_WEEKS},(_,i)=>i+1).map(w => {
+      const saved=parseFloat(twLogs[w]?.saved)||0;
+      const expTotal=(twLogs[w]?.expenses||[]).reduce((s,e)=>s+(parseFloat(e.amount)||0),0);
+      return (
+        <div key={w} onClick={()=>setTwWeek(w)} style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 14px",
+          marginBottom:5, borderRadius:14, cursor:"pointer",
+          background:twWeek===w?"rgba(125,211,200,0.07)":"rgba(255,255,255,0.02)",
+          border:`1px solid ${twWeek===w?"rgba(125,211,200,0.2)":"rgba(255,255,255,0.05)"}` }}>
+          <div style={{ width:26,height:26,borderRadius:"50%",background:saved>0?"rgba(125,211,200,0.15)":"rgba(255,255,255,0.05)",
+            display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,
+            color:saved>0?"#7DD3C8":"rgba(255,255,255,0.25)",fontWeight:700,flexShrink:0 }}>
+            {saved>0?"✓":w}
+          </div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+              <span style={{ fontSize:12, color:saved>0?"#f0ede6":"rgba(255,255,255,0.3)" }}>Week {w}</span>
+              <div style={{ display:"flex", gap:8 }}>
+                {saved>0&&<span style={{ fontSize:12, color:"#7DD3C8" }}>+₱{saved.toLocaleString()}</span>}
+                {expTotal>0&&<span style={{ fontSize:12, color:"#F4A26B" }}>-₱{expTotal.toLocaleString()}</span>}
+              </div>
+            </div>
+            <ProgressBar value={saved} max={TAIWAN_WEEKLY_TARGET} color="#7DD3C8" height={3} glow={false} />
+          </div>
+        </div>
+      );
+    })}
+  </div>
+);
+
+// ── BizTab ─────────────────────────────────────────────────────────
+const BizTab = ({ bizLogs, bizMonth, setBizMonth, updateBiz, bizTotal }) => (
+  <div className="fade-up" style={{ padding:"20px 16px", display:"flex", flexDirection:"column", gap:14 }}>
+    <div style={{ fontFamily:"'Instrument Serif',serif", fontSize:22, color:"#FFC864", fontStyle:"italic" }}>Business Fund 🚗</div>
+    <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)" }}>Purrfect Detail PH startup · Goal ₱{BIZ_GOAL.toLocaleString()}</div>
+
+    <Card accent="rgba(255,200,100,0.2)" style={{ padding:16 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
+        <div style={{ fontFamily:"'Instrument Serif',serif", fontSize:26, color:"#FFC864" }}>₱{bizTotal.toLocaleString()}</div>
+        <div style={{ fontSize:22, fontWeight:800, color:"#FFC864" }}>{Math.round((bizTotal/BIZ_GOAL)*100)}%</div>
+      </div>
+      <ProgressBar value={bizTotal} max={BIZ_GOAL} color="#FFC864" />
+      <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginTop:8, textAlign:"right" }}>₱{Math.max(BIZ_GOAL-bizTotal,0).toLocaleString()} remaining</div>
+    </Card>
+
+    <div style={{ display:"flex", gap:8 }}>
+      {["Month 1","Month 2","Month 3"].map((label,i) => {
+        const m=i+1, done=parseFloat(bizLogs[m]?.saved)>0;
+        return (
+          <button key={m} onClick={()=>setBizMonth(m)} style={{ flex:1, padding:"10px 6px", borderRadius:14,
+            border:bizMonth===m?"1px solid #FFC864":"1px solid rgba(255,255,255,0.08)",
+            background:bizMonth===m?"rgba(255,200,100,0.12)":done?"rgba(255,200,100,0.05)":"rgba(255,255,255,0.03)",
+            color:bizMonth===m?"#FFC864":done?"rgba(255,200,100,0.6)":"rgba(255,255,255,0.3)",
+            fontSize:12, fontWeight:bizMonth===m?700:400, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>
+            {label}{done?" ✓":""}
+          </button>
+        );
+      })}
+    </div>
+
+    <Card accent="rgba(255,200,100,0.15)">
+      <div style={{ fontFamily:"'Instrument Serif',serif", fontSize:18, color:"#fff", marginBottom:14 }}>
+        Month {bizMonth} <span style={{ color:"#FFC864", fontStyle:"italic" }}>Savings</span>
+      </div>
+      <div style={{ marginBottom:12 }}>
+        <Lbl>Amount Saved (₱)</Lbl>
+        <input type="number" placeholder="e.g. 8,000" value={bizLogs[bizMonth]?.saved||""}
+          onChange={e=>updateBiz(bizMonth,"saved",e.target.value)}
+          style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,200,100,0.25)",
+            borderRadius:12, padding:"12px 14px", color:"#f0ede6", fontSize:18, fontWeight:700, fontFamily:"'Syne',sans-serif" }} />
+      </div>
+      <div style={{ marginBottom:4 }}>
+        <Lbl>Note</Lbl>
+        <input type="text" placeholder="What you bought or skipped this month" value={bizLogs[bizMonth]?.note||""}
+          onChange={e=>updateBiz(bizMonth,"note",e.target.value)}
+          style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)",
+            borderRadius:12, padding:"12px 14px", color:"#f0ede6", fontSize:14, fontFamily:"'Syne',sans-serif" }} />
+      </div>
+      {parseFloat(bizLogs[bizMonth]?.saved)>0 && (
+        <div style={{ background:"rgba(255,200,100,0.07)", borderRadius:12, padding:12, border:"1px solid rgba(255,200,100,0.15)", marginTop:12 }}>
+          <div style={{ fontSize:13, color:"#FFC864" }}>Saved ₱{parseFloat(bizLogs[bizMonth].saved).toLocaleString()}</div>
+          {bizLogs[bizMonth]?.note&&<div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:4,fontStyle:"italic"}}>"{bizLogs[bizMonth].note}"</div>}
+        </div>
+      )}
+    </Card>
+
+    <Card>
+      <Lbl>🔧 Equipment to Buy</Lbl>
+      {[
+        {item:"Starter supplies (Phase 1)",    cost:"₱5,000–₱8,000"},
+        {item:"Pressure washer",               cost:"₱5,000–₱9,000"},
+        {item:"Wet/dry vacuum",                cost:"₱2,500–₱5,000"},
+        {item:"Air compressor (portable)",     cost:"₱3,500–₱6,000"},
+        {item:"Foam cannon",                   cost:"₱800–₱1,500"},
+        {item:"Microfiber towels (20+)",       cost:"₱500–₱1,200"},
+        {item:"Detailing brushes set",         cost:"₱500–₱1,000"},
+        {item:"Uniform + signage/tarp",        cost:"₱800–₱1,600"},
+      ].map((e,i,arr) => (
+        <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center",
+          padding:"9px 0", borderBottom:i<arr.length-1?"1px solid rgba(255,255,255,0.05)":"none" }}>
+          <span style={{ fontSize:13, color:"rgba(240,237,230,0.75)" }}>{e.item}</span>
+          <span style={{ fontSize:12, color:"#FFC864", fontWeight:600 }}>{e.cost}</span>
+        </div>
+      ))}
+      <div style={{ display:"flex", justifyContent:"space-between", marginTop:12, paddingTop:12, borderTop:"1px solid rgba(255,200,100,0.2)" }}>
+        <span style={{ fontSize:14, fontWeight:700, color:"#f0ede6" }}>Total Budget</span>
+        <span style={{ fontSize:15, fontWeight:800, color:"#FFC864" }}>₱{BIZ_GOAL.toLocaleString()}</span>
+      </div>
+    </Card>
+
+    <Card>
+      <Lbl>🎁 Client Retention Offers</Lbl>
+      {[
+        {icon:"🏷️",title:"First Detail Discount",  desc:"20–30% off first-time clients to get them through the door."},
+        {icon:"🐾",title:"Purr Card (Loyalty)",     desc:"5 stamps = 6th detail free. Hand one to every client."},
+        {icon:"🤝",title:"Refer a Friend",          desc:"₱150 off for both referrer and new client."},
+        {icon:"📅",title:"Monthly Package",         desc:"₱2,500/month for 2 details — guarantees recurring income."},
+        {icon:"📸",title:"Before & After Discount", desc:"₱100–₱200 off in exchange for posting their car on your page."},
+      ].map((o,i,arr) => (
+        <div key={i} style={{ display:"flex", gap:10, paddingBottom:i<arr.length-1?12:0,
+          marginBottom:i<arr.length-1?12:0, borderBottom:i<arr.length-1?"1px solid rgba(255,255,255,0.05)":"none" }}>
+          <span style={{ fontSize:20, flexShrink:0 }}>{o.icon}</span>
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, color:"#f0ede6", marginBottom:2 }}>{o.title}</div>
+            <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", lineHeight:1.5 }}>{o.desc}</div>
+          </div>
+        </div>
+      ))}
+    </Card>
+
+    <Card>
+      <Lbl>🗺️ Launch Roadmap</Lbl>
+      {[
+        {phase:"Phase 1",title:"Practice & Portfolio",   time:"Post-Taiwan · Month 1–2", color:"#7DD3C8", desc:"Buy starter supplies. Detail your own car + neighbors for free. Build social media content."},
+        {phase:"Phase 2",title:"Full Equipment Buyout",  time:"Month 2–3",               color:"#FFC864", desc:"Complete your setup. Keep posting. Grow your following before charging."},
+        {phase:"Phase 3",title:"Soft Launch",            time:"Month 3–4",               color:"#A8D98B", desc:"First paying clients. 1–2 per weekend. Launch Purr Card & referral promos."},
+        {phase:"Phase 4",title:"Growth Mode",            time:"Month 5+",                color:"#F4A26B", desc:"Raise prices, add clay bar upsell, build regulars. Work toward ceramic coating."},
+      ].map((p,i,arr) => (
+        <div key={i} style={{ display:"flex", gap:12, paddingBottom:i<arr.length-1?14:0,
+          marginBottom:i<arr.length-1?14:0, borderBottom:i<arr.length-1?"1px solid rgba(255,255,255,0.05)":"none" }}>
+          <div style={{ width:3, borderRadius:999, background:p.color, flexShrink:0, minHeight:60 }} />
+          <div>
+            <div style={{ fontSize:10, color:p.color, letterSpacing:2, textTransform:"uppercase", fontWeight:700, marginBottom:2 }}>{p.phase} · {p.time}</div>
+            <div style={{ fontSize:14, color:"#f0ede6", fontWeight:600, marginBottom:4 }}>{p.title}</div>
+            <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)", lineHeight:1.5 }}>{p.desc}</div>
+          </div>
+        </div>
+      ))}
+    </Card>
+  </div>
+);
+
+// ── JobsTab ────────────────────────────────────────────────────────
+const JobsTab = ({ jobs, addJob, deleteJob, jobTotal, jobCount }) => {
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
+
+  const handleAdd = () => {
+    if (!form.date || !form.price) return;
+    addJob({ ...form, id:Date.now() });
+    setForm(EMPTY_FORM);
+    setShowForm(false);
+  };
+
+  return (
+    <div className="fade-up" style={{ padding:"20px 16px", display:"flex", flexDirection:"column", gap:14 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+        <div>
+          <div style={{ fontFamily:"'Instrument Serif',serif", fontSize:22, color:"#A8D98B", fontStyle:"italic" }}>Job Log 🧽</div>
+          <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginTop:2 }}>{jobCount} jobs · ₱{jobTotal.toLocaleString()} earned</div>
+        </div>
+        <button onClick={()=>setShowForm(!showForm)} style={{
+          background:showForm?"rgba(255,255,255,0.05)":"rgba(168,217,139,0.15)",
+          border:`1px solid ${showForm?"rgba(255,255,255,0.1)":"rgba(168,217,139,0.3)"}`,
+          borderRadius:12, padding:"10px 16px", color:showForm?"rgba(255,255,255,0.4)":"#A8D98B",
+          fontSize:13, fontWeight:700, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>
+          {showForm?"Cancel":"+ Log Job"}
+        </button>
+      </div>
+
+      {showForm && (
+        <Card accent="rgba(168,217,139,0.2)">
+          <div style={{ fontFamily:"'Instrument Serif',serif", fontSize:18, color:"#A8D98B", marginBottom:14, fontStyle:"italic" }}>New Job Entry</div>
+          <div style={{ marginBottom:12 }}>
+            <Lbl>Date</Lbl>
+            <input type="date" value={form.date} onChange={e=>setForm(p=>({...p,date:e.target.value}))}
+              style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(168,217,139,0.2)",
+                borderRadius:12, padding:"12px 14px", color:"#f0ede6", fontSize:14, fontFamily:"'Syne',sans-serif" }} />
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:12 }}>
+            <div>
+              <Lbl>Vehicle</Lbl>
+              <select value={form.vehicle} onChange={e=>setForm(p=>({...p,vehicle:e.target.value}))}
+                style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)",
+                  borderRadius:12, padding:"12px 10px", color:"#f0ede6", fontSize:13, fontFamily:"'Syne',sans-serif" }}>
+                <option value="Car">🚗 Car</option>
+                <option value="Motorcycle">🏍️ Motorcycle</option>
+              </select>
+            </div>
+            <div>
+              <Lbl>Price (₱)</Lbl>
+              <input type="number" value={form.price} onChange={e=>setForm(p=>({...p,price:e.target.value}))}
+                style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(168,217,139,0.25)",
+                  borderRadius:12, padding:"12px 10px", color:"#f0ede6", fontSize:16, fontWeight:700, fontFamily:"'Syne',sans-serif" }} />
+            </div>
+          </div>
+          <div style={{ marginBottom:12 }}>
+            <Lbl>Service</Lbl>
+            <select value={form.service} onChange={e=>{
+              const svc=SERVICES.find(s=>s.label===e.target.value);
+              setForm(p=>({...p,service:e.target.value,price:svc?.price||p.price}));
+            }} style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)",
+              borderRadius:12, padding:"12px 14px", color:"#f0ede6", fontSize:13, fontFamily:"'Syne',sans-serif" }}>
+              {SERVICES.map(s=><option key={s.label} value={s.label}>{s.label}</option>)}
+            </select>
+          </div>
+          <div style={{ marginBottom:12 }}>
+            <Lbl>🐱 Cat visitor? (optional)</Lbl>
+            <input type="text" placeholder="e.g. Orange tabby stopped by!" value={form.cat}
+              onChange={e=>setForm(p=>({...p,cat:e.target.value}))}
+              style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,200,100,0.15)",
+                borderRadius:12, padding:"12px 14px", color:"#f0ede6", fontSize:14, fontFamily:"'Syne',sans-serif" }} />
+          </div>
+          <div style={{ marginBottom:14 }}>
+            <Lbl>Note</Lbl>
+            <input type="text" placeholder="Client feedback, what went well..." value={form.note}
+              onChange={e=>setForm(p=>({...p,note:e.target.value}))}
+              style={{ width:"100%", background:"rgba(255,255,255,0.05)", border:"1px solid rgba(255,255,255,0.1)",
+                borderRadius:12, padding:"12px 14px", color:"#f0ede6", fontSize:14, fontFamily:"'Syne',sans-serif" }} />
+          </div>
+          <button onClick={handleAdd} style={{ width:"100%", background:"rgba(168,217,139,0.15)",
+            border:"1px solid rgba(168,217,139,0.3)", borderRadius:14, padding:14,
+            color:"#A8D98B", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"'Syne',sans-serif" }}>
+            Save Job ✓
+          </button>
+        </Card>
+      )}
+
+      {jobCount>0 && (
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+          {[
+            {label:"Total Jobs",  value:jobCount},
+            {label:"Total Earned",value:`₱${jobTotal.toLocaleString()}`},
+            {label:"Avg / Job",   value:`₱${Math.round(jobTotal/jobCount).toLocaleString()}`},
+          ].map((s,i) => (
+            <Card key={i} style={{ padding:"12px 10px", textAlign:"center" }}>
+              <div style={{ fontSize:"clamp(13px,3.8vw,18px)", fontWeight:800, color:"#A8D98B" }}>{s.value}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", marginTop:2 }}>{s.label}</div>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Card>
+        <Lbl>💰 Suggested Pricing</Lbl>
+        {[
+          {svc:"Motorcycle Basic Wash",  price:"₱300–₱400"},
+          {svc:"Motorcycle Full Detail", price:"₱500–₱700"},
+          {svc:"Car Basic Wash",         price:"₱500–₱700"},
+          {svc:"Car Standard Detail",    price:"₱1,200–₱1,800"},
+          {svc:"Car Full Detail",        price:"₱2,500–₱4,000"},
+          {svc:"Interior Only",          price:"₱600–₱800"},
+        ].map((p,i,arr) => (
+          <div key={i} style={{ display:"flex", justifyContent:"space-between", padding:"8px 0",
+            borderBottom:i<arr.length-1?"1px solid rgba(255,255,255,0.05)":"none" }}>
+            <span style={{ fontSize:12, color:"rgba(240,237,230,0.65)" }}>{p.svc}</span>
+            <span style={{ fontSize:12, color:"#A8D98B", fontWeight:600 }}>{p.price}</span>
+          </div>
+        ))}
+      </Card>
+
+      {jobs.length===0 ? (
+        <div style={{ textAlign:"center", padding:"40px 20px", color:"rgba(255,255,255,0.2)", fontSize:13 }}>
+          <div style={{ fontSize:32, marginBottom:8 }}>🐱</div>
+          No jobs yet. Log your first practice detail to get started!
+        </div>
+      ) : jobs.map(job => (
+        <Card key={job.id} style={{ padding:"14px 16px" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+            <div style={{ flex:1 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4 }}>
+                <span style={{ fontSize:16 }}>{job.vehicle==="Car"?"🚗":"🏍️"}</span>
+                <span style={{ fontSize:14, fontWeight:600, color:"#f0ede6" }}>{job.service}</span>
+              </div>
+              <div style={{ fontSize:11, color:"rgba(255,255,255,0.3)", marginBottom:job.note||job.cat?6:0 }}>{job.date}</div>
+              {job.note&&<div style={{fontSize:12,color:"rgba(255,255,255,0.45)",fontStyle:"italic",marginBottom:3}}>"{job.note}"</div>}
+              {job.cat&&<div style={{fontSize:12,color:"#FFC864"}}>🐱 {job.cat}</div>}
+            </div>
+            <div style={{ textAlign:"right", flexShrink:0, marginLeft:12 }}>
+              <div style={{ fontSize:18, fontWeight:800, color:"#A8D98B" }}>₱{parseFloat(job.price).toLocaleString()}</div>
+              <button onClick={()=>deleteJob(job.id)} style={{ background:"transparent", border:"none",
+                color:"rgba(255,255,255,0.15)", fontSize:11, cursor:"pointer", marginTop:4, fontFamily:"'Syne',sans-serif" }}>delete</button>
+            </div>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+};
+
+// ── App (only state lives here) ────────────────────────────────────
+function App() {
+  const [tab, setTab] = useState("home");
+  const [twLogs,  setTwLogs]  = useState(() => load("pdph4-taiwan", initTw()));
+  const [twWeek,  setTwWeek]  = useState(1);
+  const [bizLogs, setBizLogs] = useState(() => load("pdph4-biz",    initBiz()));
+  const [bizMonth,setBizMonth]= useState(1);
+  const [jobs,    setJobs]    = useState(() => load("pdph4-jobs",   []));
+
+  useEffect(() => persist("pdph4-taiwan", twLogs),  [twLogs]);
+  useEffect(() => persist("pdph4-biz",    bizLogs), [bizLogs]);
+  useEffect(() => persist("pdph4-jobs",   jobs),    [jobs]);
+
+  const twTotal       = Object.values(twLogs).reduce((s,w)=>s+(parseFloat(w.saved)||0),0);
+  const bizTotal      = Object.values(bizLogs).reduce((s,m)=>s+(parseFloat(m.saved)||0),0);
+  const jobTotal      = jobs.reduce((s,j)=>s+(parseFloat(j.price)||0),0);
+  const jobCount      = jobs.length;
+  const twWeeksLogged = Object.values(twLogs).filter(w=>parseFloat(w.saved)>0).length;
+  const twRemaining   = Math.max(TAIWAN_GOAL-twTotal,0);
+  const weeksLeft     = Math.max(TAIWAN_WEEKS-twWeeksLogged,1);
+
+  const updateTw  = useCallback((w,f,v)=>setTwLogs(p=>({...p,[w]:{...p[w],[f]:v}})),[]);
+  const updateBiz = useCallback((m,f,v)=>setBizLogs(p=>({...p,[m]:{...p[m],[f]:v}})),[]);
+  const addJob    = useCallback(job=>setJobs(p=>[job,...p]),[]);
+  const deleteJob = useCallback(id=>{if(window.confirm("Delete this job?"))setJobs(p=>p.filter(j=>j.id!==id));},[]);
+  const addExpense = useCallback((w,exp)=>setTwLogs(p=>({...p,[w]:{...p[w],expenses:[...(p[w]?.expenses||[]),exp]}})),[]);
+  const deleteExpense = useCallback((w,id)=>setTwLogs(p=>({...p,[w]:{...p[w],expenses:(p[w]?.expenses||[]).filter(e=>e.id!==id)}})),[]);
+
+  const resetAll = () => {
+    if(!window.confirm("Reset ALL data? This cannot be undone."))return;
+    setTwLogs(initTw());setBizLogs(initBiz());setJobs([]);
+    ["pdph4-taiwan","pdph4-biz","pdph4-jobs"].forEach(k=>{try{localStorage.removeItem(k);}catch{}});
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#0e0e0e", fontFamily:"'Syne',sans-serif", color:"#f0ede6", paddingBottom:80 }}>
+      {/* Header */}
+      <div style={{ padding:"28px 20px 0", position:"relative" }}>
+        <div style={{ position:"absolute",top:0,left:0,right:0,height:200,
+          background:"radial-gradient(ellipse at 50% 0%,rgba(255,200,100,0.12) 0%,transparent 70%)",pointerEvents:"none" }} />
+        <div style={{ textAlign:"center", position:"relative" }}>
+          <div style={{ fontSize:36, marginBottom:4 }}>🐱</div>
+          <div style={{ fontFamily:"'Instrument Serif',serif", fontSize:"clamp(22px,6vw,30px)", fontStyle:"italic", color:"#FFC864", lineHeight:1 }}>Purrfect Detail PH</div>
+          <div style={{ fontSize:11, color:"rgba(240,237,230,0.35)", letterSpacing:3, textTransform:"uppercase", marginTop:4 }}>Your Business Dashboard</div>
+        </div>
+      </div>
+
+      {tab==="home"   && <HomeTab   twTotal={twTotal} bizTotal={bizTotal} jobTotal={jobTotal} jobCount={jobCount} twRemaining={twRemaining} resetAll={resetAll} />}
+      {tab==="taiwan" && <TaiwanTab twLogs={twLogs} twWeek={twWeek} setTwWeek={setTwWeek} updateTw={updateTw} addExpense={addExpense} deleteExpense={deleteExpense} twTotal={twTotal} twWeeksLogged={twWeeksLogged} twRemaining={twRemaining} weeksLeft={weeksLeft} />}
+      {tab==="biz"    && <BizTab    bizLogs={bizLogs} bizMonth={bizMonth} setBizMonth={setBizMonth} updateBiz={updateBiz} bizTotal={bizTotal} />}
+      {tab==="jobs"   && <JobsTab   jobs={jobs} addJob={addJob} deleteJob={deleteJob} jobTotal={jobTotal} jobCount={jobCount} />}
+
+      {/* Bottom Nav */}
+      <div style={{ position:"fixed", bottom:0, left:0, right:0, background:"rgba(14,14,14,0.97)",
+        backdropFilter:"blur(20px)", borderTop:"1px solid rgba(255,255,255,0.07)", display:"flex", zIndex:100 }}>
+        {[{id:"home",icon:"🏠",label:"Home"},{id:"taiwan",icon:"✈️",label:"Taiwan"},{id:"biz",icon:"🚗",label:"Business"},{id:"jobs",icon:"🧽",label:"Jobs"}].map(n=>(
+          <button key={n.id} onClick={()=>setTab(n.id)} style={{ flex:1, padding:"12px 4px 10px", background:"transparent", border:"none", cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
+            <span style={{ fontSize:20 }}>{n.icon}</span>
+            <span style={{ fontSize:10, color:tab===n.id?"#FFC864":"rgba(255,255,255,0.3)", fontFamily:"'Syne',sans-serif", fontWeight:tab===n.id?700:400 }}>{n.label}</span>
+            {tab===n.id&&<div style={{width:4,height:4,borderRadius:"50%",background:"#FFC864",marginTop:1}}/>}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').then(reg => {
+      console.log('SW registered');
+    }).catch(err => console.log('SW error', err));
+  });
+}
+</script>
+</body>
+</html>
